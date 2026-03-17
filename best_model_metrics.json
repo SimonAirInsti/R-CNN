@@ -1,0 +1,21 @@
+{
+  "best_fold": 2,
+  "selection_criteria": "recall + specificity + accuracy",
+  "selection_score": 2.972130756382725,
+  "val_metrics": {
+    "accuracy": 0.9878787878787879,
+    "precision": 1.0,
+    "recall": 0.984251968503937,
+    "specificity": 1.0,
+    "mcc": 0.9669743378594596,
+    "auc_roc": 1.0
+  },
+  "test_metrics": {
+    "accuracy": 0.9757281553398058,
+    "precision": 0.9782608695652174,
+    "recall": 0.9905660377358491,
+    "specificity": 0.925531914893617,
+    "mcc": 0.9304010862661515,
+    "auc_roc": 0.9890606182256121
+  }
+}
