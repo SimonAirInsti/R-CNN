@@ -1,6 +1,9 @@
 # --- The Heart of Deep Learning ---
 torch>=2.0.0
 
+# --- Configuration ---
+PyYAML>=6.0.0
+
 # --- Language model and sequence processing (Inference script) ---
 fair-esm>=0.4.0
 biopython>=1.81

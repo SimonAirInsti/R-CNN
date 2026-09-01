@@ -1,0 +1,4 @@
+shared/__pycache__/__init__.cpython-311.pyc
+shared/__pycache__/*.pyc
+src/__pycache__/__init__.cpython-311.pyc
+src/modules/rcnn_model/__pycache__/*.pyc
