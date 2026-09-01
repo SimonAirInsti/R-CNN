@@ -166,6 +166,31 @@ def load_embeddings(pt_path: str) -> list:
     raise ValueError(f"Could not parse embeddings from {pt_path}.")
 
 
+def resolve_project_path(project_root: str, path_value: str) -> str:
+    """Resolve a project-relative path against the repository root."""
+    path = str(path_value)
+    if path.startswith("/") or (len(path) > 1 and path[1] == ":"):
+        return path
+    return str((project_root / path).resolve())
+
+
+def load_training_data_from_config(config: dict, project_root: str) -> tuple[list, np.ndarray, list, np.ndarray]:
+    """Load the antigenic and non-antigenic data splits from the YAML config."""
+    paths = config.get("paths", {})
+    project_root_path = project_root if hasattr(project_root, "__fspath__") else __import__("pathlib").Path(project_root)
+
+    train_ag = load_embeddings(resolve_project_path(project_root_path, paths["train_ag"]))
+    train_nag = load_embeddings(resolve_project_path(project_root_path, paths["train_nag"]))
+    test_ag = load_embeddings(resolve_project_path(project_root_path, paths["test_ag"]))
+    test_nag = load_embeddings(resolve_project_path(project_root_path, paths["test_nag"]))
+
+    train_embeddings = train_ag + train_nag
+    train_labels = np.array([1] * len(train_ag) + [0] * len(train_nag))
+    test_embeddings = test_ag + test_nag
+    test_labels = np.array([1] * len(test_ag) + [0] * len(test_nag))
+    return train_embeddings, train_labels, test_embeddings, test_labels
+
+
 def weighted_bce_loss(logits: torch.Tensor, targets: torch.Tensor, w_pos: float, w_neg: float) -> torch.Tensor:
     weights = torch.where(targets == 1, w_pos, w_neg)
     return nn.functional.binary_cross_entropy_with_logits(logits, targets, weight=weights)
