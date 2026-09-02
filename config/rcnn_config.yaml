@@ -40,10 +40,12 @@ model:
 
 training:
   epochs: 100
-  batch_size: 32
+  batch_size: 16
   learning_rate: 0.0001
   weight_decay: 0.00001
   num_folds: 10
+  num_workers: 0
+  pin_memory: false
   patience: 15
   weight_antigenic: 0.64
   weight_nonantigenic: 2.24

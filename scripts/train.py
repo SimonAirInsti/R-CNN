@@ -14,9 +14,9 @@ import torch
 from shared.config_loader import get_default_config_path, load_yaml_config
 from src.modules.rcnn_training.entrypoint import (
     TrainingConfig,
+    compare_rcnn_architectures,
     load_training_data_from_config,
 )
-from legacy.RCNN_CV import cross_validate_rcnn
 
 
 def main() -> None:
@@ -38,12 +38,12 @@ def main() -> None:
     print(f"Train: {len(train_embeddings)} proteins")
     print(f"Test:  {len(test_embeddings)} proteins")
 
-    cross_validate_rcnn(
+    compare_rcnn_architectures(
         train_embeddings=train_embeddings,
         train_labels=train_labels,
         test_embeddings=test_embeddings,
         test_labels=test_labels,
-        config=training_cfg,
+        config=config,
         device=device,
         output_dir=output_dir,
     )

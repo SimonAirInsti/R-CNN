@@ -98,7 +98,22 @@ def build_model(config: dict) -> RCNN:
     here as a dictionary. The constructor defaults are only a defensive fallback
     for isolated usage outside the project configuration flow.
     """
+    return build_model_for_variant(config, "base")
+
+
+def build_model_for_variant(config: dict, variant_name: str = "base") -> RCNN:
+    """Build a model for a named architecture variant declared in the YAML config."""
     model_cfg = config.get("model", {}).get("base", {})
+
+    if variant_name != "base":
+        candidate_cfg = config.get("model", {}).get("candidate_architectures", {})
+        if variant_name not in candidate_cfg:
+            raise ValueError(
+                f"Unknown architecture variant '{variant_name}'. "
+                f"Available variants: {list(candidate_cfg.keys()) + ['base']}"
+            )
+        model_cfg = candidate_cfg[variant_name]
+
     return RCNN(
         input_dim=model_cfg.get("input_dim", 1280),
         num_filters=model_cfg.get("num_filters", 128),
