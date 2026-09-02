@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import copy
+import json
+import os
 from dataclasses import dataclass
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,9 +18,10 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from torch.utils.data import Dataset
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset
 
-from src.modules.rcnn_model.entrypoint import RCNN
+from src.modules.rcnn_model.entrypoint import RCNN, build_model_for_variant
 
 
 @dataclass
@@ -32,6 +38,8 @@ class TrainingConfig:
     learning_rate: float
     weight_decay: float
     num_folds: int
+    num_workers: int
+    pin_memory: bool
     input_dim: int
     num_filters: int
     kernel_sizes: list[int]
@@ -56,6 +64,8 @@ class TrainingConfig:
             learning_rate=1e-4,
             weight_decay=1e-5,
             num_folds=10,
+            num_workers=0,
+            pin_memory=False,
             input_dim=1280,
             num_filters=128,
             kernel_sizes=[3, 5, 7],
@@ -83,6 +93,8 @@ class TrainingConfig:
             learning_rate=training_cfg.get("learning_rate", cls.defaults().learning_rate),
             weight_decay=training_cfg.get("weight_decay", cls.defaults().weight_decay),
             num_folds=training_cfg.get("num_folds", cls.defaults().num_folds),
+            num_workers=training_cfg.get("num_workers", cls.defaults().num_workers),
+            pin_memory=training_cfg.get("pin_memory", cls.defaults().pin_memory),
             input_dim=model_cfg.get("input_dim", cls.defaults().input_dim),
             num_filters=model_cfg.get("num_filters", cls.defaults().num_filters),
             kernel_sizes=model_cfg.get("kernel_sizes", cls.defaults().kernel_sizes),
@@ -293,13 +305,221 @@ def train_with_early_stopping(model, train_loader, val_loader, optimizer, device
 
 def build_model_from_config(config: dict) -> RCNN:
     """Build the RCNN model strictly from the project YAML config."""
-    model_cfg = config.get("model", {}).get("base", {})
-    return RCNN(
-        input_dim=model_cfg.get("input_dim", TrainingConfig.defaults().input_dim),
-        num_filters=model_cfg.get("num_filters", TrainingConfig.defaults().num_filters),
-        kernel_sizes=model_cfg.get("kernel_sizes", TrainingConfig.defaults().kernel_sizes),
-        rnn_hidden=model_cfg.get("rnn_hidden", TrainingConfig.defaults().rnn_hidden),
-        rnn_layers=model_cfg.get("rnn_layers", TrainingConfig.defaults().rnn_layers),
-        fc_hidden=model_cfg.get("fc_hidden", TrainingConfig.defaults().fc_hidden),
-        dropout=model_cfg.get("dropout", TrainingConfig.defaults().dropout),
-    )
+    return build_model_for_variant(config, "base")
+
+
+def build_variant_config(config: dict, variant_name: str) -> dict:
+    """Return a configuration dictionary for a given architecture variant."""
+    if variant_name == "base":
+        model_cfg = config.get("model", {}).get("base", {})
+    else:
+        candidates = config.get("model", {}).get("candidate_architectures", {})
+        if variant_name not in candidates:
+            raise ValueError(
+                f"Unknown variant '{variant_name}'. Available ones: {list(candidates.keys()) + ['base']}"
+            )
+        model_cfg = candidates[variant_name]
+
+    return {
+        "model": {"base": model_cfg},
+        "training": config.get("training", {}),
+    }
+
+
+def _plot_architecture_comparison(results: list[dict], output_dir: str) -> str:
+    """Create a compact bar chart of test metrics across model variants."""
+    metric_names = ["accuracy", "precision", "recall", "specificity", "mcc", "auc_roc"]
+    variants = [item["variant"] for item in results]
+    values_by_metric = {
+        metric: [item["test_metrics"][metric] for item in results]
+        for metric in metric_names
+    }
+
+    fig, axes = plt.subplots(len(metric_names), 1, figsize=(10, 2.5 * len(metric_names)))
+    if len(metric_names) == 1:
+        axes = [axes]
+
+    for ax, metric in zip(axes, metric_names):
+        ax.bar(variants, values_by_metric[metric], color="steelblue")
+        ax.set_title(f"Test {metric}")
+        ax.set_ylabel(metric)
+        ax.set_ylim(0.0, 1.05 if metric != "mcc" else 1.10)
+        ax.grid(axis="y", alpha=0.3)
+        for tick in ax.get_xticklabels():
+            tick.set_rotation(25)
+
+    fig.tight_layout()
+    path = os.path.join(output_dir, "architecture_comparison.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def _write_metrics_table(results: list[dict], output_dir: str) -> dict[str, str]:
+    """Export a direct comparison table with models as rows and metrics as columns."""
+    metric_names = ["accuracy", "precision", "recall", "specificity", "mcc", "auc_roc"]
+
+    csv_path = os.path.join(output_dir, "architecture_comparison_table.csv")
+    md_path = os.path.join(output_dir, "architecture_comparison_table.md")
+
+    with open(csv_path, "w", encoding="utf-8", newline="") as fh:
+        fh.write("variant," + ",".join(metric_names) + "\n")
+        for item in results:
+            row = [item["variant"]]
+            row.extend(f"{item['test_metrics'][metric]:.6f}" for metric in metric_names)
+            fh.write(",".join(row) + "\n")
+
+    winner_by_metric = {}
+    for metric in metric_names:
+        best_value = max(item["test_metrics"][metric] for item in results)
+        winner_by_metric[metric] = [
+            item["variant"] for item in results if item["test_metrics"][metric] == best_value
+        ]
+
+    md_lines = [
+        "| model | accuracy | precision | recall | specificity | mcc | auc_roc |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for item in results:
+        metrics = item["test_metrics"]
+        formatted = []
+        for metric in metric_names:
+            value = metrics[metric]
+            if item["variant"] in winner_by_metric.get(metric, []):
+                formatted.append(f"**{value:.4f}**")
+            else:
+                formatted.append(f"{value:.4f}")
+        md_lines.append("| " + item["variant"] + " | " + " | ".join(formatted) + " |")
+
+    md_lines.append("")
+    md_lines.append("### Best model by metric")
+    for metric in metric_names:
+        winners = ", ".join(winner_by_metric[metric])
+        md_lines.append(f"- **{metric}**: {winners}")
+
+    with open(md_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(md_lines) + "\n")
+
+    return {"csv_path": csv_path, "md_path": md_path}
+
+
+def compare_rcnn_architectures(
+    train_embeddings: list,
+    train_labels: np.ndarray,
+    test_embeddings: list,
+    test_labels: np.ndarray,
+    config: dict,
+    device: torch.device,
+    output_dir: str,
+    variant_names: list[str] | None = None,
+) -> dict:
+    """Train and validate a small set of RCNN variants from the YAML config.
+
+    This intentionally keeps the comparison simple and readable: the base model and
+    the extra variants declared under `model.candidate_architectures` are trained
+    with the same split/evaluation logic and then compared with key metrics.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    candidate_variants = list(config.get("model", {}).get("candidate_architectures", {}).keys())
+    ordered_variants = ["base"] + candidate_variants if variant_names is None else list(variant_names)
+    ordered_variants = list(dict.fromkeys(ordered_variants))
+
+    summary: list[dict] = []
+
+    for variant_name in ordered_variants:
+        variant_cfg = build_variant_config(config, variant_name)
+        training_cfg = TrainingConfig.from_dict(variant_cfg)
+
+        idx = np.arange(len(train_labels))
+        trn_idx, val_idx = train_test_split(
+            idx,
+            test_size=0.2,
+            stratify=train_labels,
+            random_state=42,
+        )
+
+        trn_ds = ProteinDataset([train_embeddings[i] for i in trn_idx], train_labels[trn_idx])
+        val_ds = ProteinDataset([train_embeddings[i] for i in val_idx], train_labels[val_idx])
+
+        use_cuda = device.type == "cuda"
+        pin_memory = bool(training_cfg.pin_memory and use_cuda)
+        num_workers = max(0, int(training_cfg.num_workers))
+
+        trn_loader = DataLoader(
+            trn_ds,
+            batch_size=training_cfg.batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+        val_loader = DataLoader(
+            val_ds,
+            batch_size=training_cfg.batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+        test_ds = ProteinDataset(test_embeddings, test_labels)
+        test_loader = DataLoader(
+            test_ds,
+            batch_size=training_cfg.batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+
+        model = build_model_for_variant(config, variant_name).to(device)
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=training_cfg.learning_rate,
+            weight_decay=training_cfg.weight_decay,
+        )
+
+        best_state, history, early_epoch = train_with_early_stopping(
+            model, trn_loader, val_loader, optimizer, device, training_cfg
+        )
+        model.load_state_dict(best_state)
+
+        test_eval = evaluate(model, test_loader, device, training_cfg)
+        test_metrics = compute_metrics(test_eval["labels"], test_eval["scores"])
+
+        model_path = os.path.join(output_dir, f"{variant_name}_best_model.pt")
+        torch.save(best_state, model_path)
+
+        summary.append(
+            {
+                "variant": variant_name,
+                "early_stop_epoch": early_epoch,
+                "history": history,
+                "val_metrics": compute_metrics(
+                    evaluate(model, val_loader, device, training_cfg)["labels"],
+                    evaluate(model, val_loader, device, training_cfg)["scores"],
+                ),
+                "test_metrics": test_metrics,
+                "model_path": model_path,
+            }
+        )
+
+        print(f"Variant {variant_name}: test_acc={test_metrics['accuracy']:.4f}, auc={test_metrics['auc_roc']:.4f}")
+
+    comparison_path = os.path.join(output_dir, "architecture_comparison.json")
+    with open(comparison_path, "w", encoding="utf-8") as fh:
+        json.dump({"variants": summary}, fh, indent=2)
+
+    table_paths = _write_metrics_table(summary, output_dir)
+    chart_path = _plot_architecture_comparison(summary, output_dir)
+    print(f"Saved architecture comparison summary: {comparison_path}")
+    print(f"Saved architecture comparison CSV: {table_paths['csv_path']}")
+    print(f"Saved architecture comparison markdown table: {table_paths['md_path']}")
+    print(f"Saved architecture comparison chart: {chart_path}")
+    return {
+        "variants": summary,
+        "chart_path": chart_path,
+        "table_csv": table_paths["csv_path"],
+        "table_md": table_paths["md_path"],
+    }
+
