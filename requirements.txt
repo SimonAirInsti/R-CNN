@@ -4,6 +4,10 @@ torch>=2.0.0
 # --- Configuration ---
 PyYAML>=6.0.0
 
+# --- Scientific stack ---
+scikit-learn>=1.4.0
+matplotlib>=3.8.0
+
 # --- Language model and sequence processing ---
 fair-esm>=0.4.0
 transformers>=4.40.0
