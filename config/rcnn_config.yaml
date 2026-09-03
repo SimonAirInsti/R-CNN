@@ -37,6 +37,23 @@ model:
       rnn_layers: 3
       fc_hidden: 160
       dropout: 0.25
+    extra_variant_1:
+      input_dim: 1280
+      num_filters: 96
+      kernel_sizes: [3, 5]
+      rnn_hidden: 96
+      rnn_layers: 2
+      fc_hidden: 96
+      dropout: 0.2
+
+    extra_variant_2:
+      input_dim: 1280
+      num_filters: 224
+      kernel_sizes: [3, 5, 7, 9, 11]
+      rnn_hidden: 224
+      rnn_layers: 4
+      fc_hidden: 224
+      dropout: 0.4
 
 training:
   epochs: 100

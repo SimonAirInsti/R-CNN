@@ -326,6 +326,67 @@ def build_variant_config(config: dict, variant_name: str) -> dict:
     }
 
 
+def _build_model_summary(config: dict, variant_name: str, model: nn.Module) -> dict:
+    """Build a serializable summary of a model architecture and parameter footprint."""
+    model_cfg = config.get("model", {}).get("base", {})
+    if variant_name != "base":
+        candidate_cfg = config.get("model", {}).get("candidate_architectures", {})
+        model_cfg = candidate_cfg.get(variant_name, model_cfg)
+
+    kernel_sizes = model_cfg.get("kernel_sizes", [3, 5, 7])
+    param_breakdown = {
+        name: int(param.numel())
+        for name, param in model.named_parameters()
+    }
+    total_parameters = sum(param_breakdown.values())
+    trainable_parameters = sum(
+        param.numel() for param in model.parameters() if param.requires_grad
+    )
+
+    return {
+        "variant": variant_name,
+        "hyperparameters": {
+            "input_dim": int(model_cfg.get("input_dim", 1280)),
+            "num_filters": int(model_cfg.get("num_filters", 128)),
+            "kernel_sizes": [int(k) for k in kernel_sizes],
+            "num_conv_blocks": len(kernel_sizes),
+            "rnn_hidden": int(model_cfg.get("rnn_hidden", 128)),
+            "rnn_layers": int(model_cfg.get("rnn_layers", 2)),
+            "fc_hidden": int(model_cfg.get("fc_hidden", 128)),
+            "dropout": float(model_cfg.get("dropout", 0.3)),
+            "bidirectional": True,
+            "rnn_type": "LSTM",
+            "classifier_output_dim": 1,
+            "input_shape": {
+                "embedding_dim": int(model_cfg.get("input_dim", 1280)),
+                "sequence_length": "variable",
+                "batch_shape": ["batch_size", "sequence_length", int(model_cfg.get("input_dim", 1280))],
+            },
+            "output_shape": {"batch_shape": ["batch_size", 1], "activation": "sigmoid"},
+        },
+        "layer_counts": {
+            "conv_blocks": len(kernel_sizes),
+            "conv_layers": len(kernel_sizes),
+            "rnn_layers": int(model_cfg.get("rnn_layers", 2)),
+            "classifier_linear_layers": 2,
+            "classifier_activation_layers": 1,
+            "batchnorm_layers": len(kernel_sizes),
+            "dropout_layers": len(kernel_sizes) + 1,
+        },
+        "parameter_counts": {
+            "total_parameters": int(total_parameters),
+            "trainable_parameters": int(trainable_parameters),
+            "non_trainable_parameters": int(total_parameters - trainable_parameters),
+            "parameter_breakdown": param_breakdown,
+        },
+        "memory_footprint": {
+            "estimated_size_mb": round((total_parameters * 4) / (1024 ** 2), 3),
+            "dtype": "float32",
+            "precision_bits": 32,
+        },
+    }
+
+
 def _plot_architecture_comparison(results: list[dict], output_dir: str) -> str:
     """Create a compact bar chart of test metrics across model variants."""
     metric_names = ["accuracy", "precision", "recall", "specificity", "mcc", "auc_roc"]
@@ -473,6 +534,7 @@ def compare_rcnn_architectures(
         )
 
         model = build_model_for_variant(config, variant_name).to(device)
+        architecture_summary = _build_model_summary(config, variant_name, model)
         optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=training_cfg.learning_rate,
@@ -495,6 +557,10 @@ def compare_rcnn_architectures(
                 "variant": variant_name,
                 "early_stop_epoch": early_epoch,
                 "history": history,
+                "hyperparameters": architecture_summary["hyperparameters"],
+                "layer_counts": architecture_summary["layer_counts"],
+                "parameter_counts": architecture_summary["parameter_counts"],
+                "memory_footprint": architecture_summary["memory_footprint"],
                 "val_metrics": compute_metrics(
                     evaluate(model, val_loader, device, training_cfg)["labels"],
                     evaluate(model, val_loader, device, training_cfg)["scores"],
