@@ -108,7 +108,7 @@ All hyperparameters are centralized in `config/rcnn_config.yaml`. The file defin
 ### 6.1 Generate ESM-2 embeddings
 
 ```bash
-python scripts/generate_embeddings.py
+python -m scripts.generate_embeddings
 ```
 
 Processes all FASTA files in `data/fasta/` and saves per-residue embeddings as `.pt` files in `data/embeddings/`.
@@ -116,7 +116,7 @@ Processes all FASTA files in `data/fasta/` and saves per-residue embeddings as `
 ### 6.2 Compare architectures
 
 ```bash
-python scripts/train.py
+python3 -m scripts.train
 ```
 
 Trains all variants declared in `config/rcnn_config.yaml` on a single 80/20 train/validation split, evaluates on the held-out test set, and produces a comparison report (JSON, CSV, markdown table, bar chart) under `results/RCNN/`.
@@ -124,7 +124,7 @@ Trains all variants declared in `config/rcnn_config.yaml` on a single 80/20 trai
 ### 6.3 Run cross-validation
 
 ```bash
-python scripts/cross_validate.py --model-path results/RCNN/base_best_model.pt
+python -m scripts.cross_validate --model-path results/RCNN/base_best_model.pt
 ```
 
 Performs 10-fold stratified cross-validation for the architecture identified by the checkpoint. Outputs per-fold metrics, aggregate statistics with SEM, a loss-per-epoch plot with 99% confidence intervals, and the best-fold checkpoint under `results/RCNN/`.
@@ -166,3 +166,18 @@ Doneva, N., & Dimitrov, I. (2024). Viral immunogenicity prediction by machine le
 - Embeddings are cached; re-running training does not recompute ESM-2 features.
 - All model checkpoints, metric logs, and plots are saved under `results/RCNN/`.
 - Training uses PyTorch with AdamW optimizer, gradient clipping (max_norm=1.0), and weighted BCE loss to handle class imbalance.
+
+## 10. Baseline Comparison
+
+Table 1 compares the performance of the RCNN model against an internally developed DNN baseline using physicochemical descriptors, and against established tools from VaxiJen 3.0 (XGBoost, Random Forest, and MLP variants using z-descriptors). The RCNN model outperforms all baseline methods across Accuracy, Specificity, MCC, and AUC-ROC, while maintaining competitive Recall.
+
+**Table 1:** Comparison of the RCNN model with internally designed baselines (DNN) and established methods (VaxiJen 3.0).
+
+| Model | Descriptor Type | Accuracy | Recall | Specificity | MCC | AUC-ROC |
+|---|---|---|---|---|---|---|
+| DNN (baseline) | Physicochemical | 0.959 | 0.986 | 0.870 | 0.881 | 0.926 |
+| **RCNN** | **ESM-2** | **0.976** | **0.991** | **0.926** | **0.930** | **0.989** |
+| XGBoost (VaxiJen 3.0) | z-descriptors | 0.917 | 0.984 | 0.851 | 0.866 | 0.977 |
+| RF (VaxiJen 3.0) | z-descriptors | 0.913 | 0.987 | 0.840 | 0.866 | 0.980 |
+| MLP (VaxiJen 3.0) | z-descriptors | 0.938 | 0.962 | 0.915 | 0.865 | 0.966 |
+
