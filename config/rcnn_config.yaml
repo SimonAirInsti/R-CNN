@@ -1,0 +1,78 @@
+project:
+  name: antigen_rcnn
+  output_dir: results/RCNN
+  data_dir: data/embeddings
+
+embedding:
+  fasta_dir: data/fasta
+  output_dir: data/embeddings
+  model_name: esm2_t33_650M_UR50D
+  device: auto
+
+model:
+  base:
+    input_dim: 1280
+    num_filters: 128
+    kernel_sizes: [3, 5, 7]
+    rnn_hidden: 128
+    rnn_layers: 2
+    fc_hidden: 128
+    dropout: 0.3
+
+  candidate_architectures:
+    deep_conv_lstm:
+      input_dim: 1280
+      num_filters: 192
+      kernel_sizes: [3, 5, 7, 9]
+      rnn_hidden: 192
+      rnn_layers: 3
+      fc_hidden: 192
+      dropout: 0.35
+
+    wide_bilstm:
+      input_dim: 1280
+      num_filters: 160
+      kernel_sizes: [3, 5, 7]
+      rnn_hidden: 160
+      rnn_layers: 3
+      fc_hidden: 160
+      dropout: 0.25
+    extra_variant_1:
+      input_dim: 1280
+      num_filters: 96
+      kernel_sizes: [3, 5]
+      rnn_hidden: 96
+      rnn_layers: 2
+      fc_hidden: 96
+      dropout: 0.2
+
+    extra_variant_2:
+      input_dim: 1280
+      num_filters: 224
+      kernel_sizes: [3, 5, 7, 9, 11]
+      rnn_hidden: 224
+      rnn_layers: 4
+      fc_hidden: 224
+      dropout: 0.4
+
+training:
+  epochs: 100
+  batch_size: 16
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  num_folds: 10
+  num_workers: 0
+  pin_memory: false
+  patience: 15
+  weight_antigenic: 0.64
+  weight_nonantigenic: 2.24
+
+validation:
+  threshold: 0.5
+  random_seed: 42
+
+paths:
+  train_ag: data/embeddings/Table S1. Training set of viral antigens.fasta.pt
+  train_nag: data/embeddings/Table S2. Training set of viral nonantigens.fasta.pt
+  test_ag: data/embeddings/Table S3. Test set of viral antigens.fasta.pt
+  test_nag: data/embeddings/Table S4. Test set of viral nonantigens.fasta.pt

@@ -1,0 +1,10 @@
+# Normalize line endings: LF in the repository, LF on checkout.
+# Keeps diffs reviewable and blame intact across Windows/WSL/Linux.
+* text=auto eol=lf
+
+# Binary artifacts: never apply any conversion.
+*.pt     binary
+*.pth    binary
+*.png    binary
+*.jpg    binary
+*.pdf    binary
