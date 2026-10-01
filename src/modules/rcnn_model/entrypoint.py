@@ -31,7 +31,7 @@ class RCNN(nn.Module):
         self.conv_blocks = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Conv1d(input_dim, num_filters, ks, padding=ks // 2),
+                    nn.Conv1d(input_dim, num_filters, ks, padding="same"),
                     nn.BatchNorm1d(num_filters),
                     nn.ReLU(),
                     nn.Dropout(dropout),

@@ -13,6 +13,8 @@ src/modules/rcnn_model/__pycache__/*.pyc
 legacy
 *.pyc
 data/fasta/
+data/fasta_filtered/
+data/fasta_unused/
 data/embeddings/
 
 results/

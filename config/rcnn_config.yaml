@@ -4,7 +4,7 @@ project:
   data_dir: data/embeddings
 
 embedding:
-  fasta_dir: data/fasta
+  fasta_dir: data/fasta_filtered
   output_dir: data/embeddings
   model_name: esm2_t33_650M_UR50D
   device: auto
@@ -55,6 +55,15 @@ model:
       fc_hidden: 224
       dropout: 0.4
 
+    extra_variant_3:
+      input_dim: 1280
+      num_filters: 128
+      kernel_sizes: [3, 12]
+      rnn_hidden: 128
+      rnn_layers: 1
+      fc_hidden: 128
+      dropout: 0.3
+
 training:
   epochs: 100
   batch_size: 16
@@ -72,7 +81,7 @@ validation:
   random_seed: 42
 
 paths:
-  train_ag: data/embeddings/Table S1. Training set of viral antigens.fasta.pt
-  train_nag: data/embeddings/Table S2. Training set of viral nonantigens.fasta.pt
-  test_ag: data/embeddings/Table S3. Test set of viral antigens.fasta.pt
-  test_nag: data/embeddings/Table S4. Test set of viral nonantigens.fasta.pt
+  train_ag: data/embeddings/combined_train_positive_filtered.fasta.pt
+  train_nag: data/embeddings/combined_train_negative_filtered.fasta.pt
+  test_ag: data/embeddings/Table S3. Test set of viral antigens_filtered.fasta.pt
+  test_nag: data/embeddings/Table S4. Test set of viral nonantigens_filtered.fasta.pt
